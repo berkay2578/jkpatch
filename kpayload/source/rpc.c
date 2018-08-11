@@ -15,7 +15,7 @@ int rpc_proc_load(struct proc *p, uint64_t address) {
 
 	uint64_t ldrsize = sizeof(rpcldr);
 	ldrsize += (PAGE_SIZE - (ldrsize % PAGE_SIZE));
-	
+
 	uint64_t stacksize = 0x80000;
 
 	// allocate rpc ldr
@@ -979,8 +979,92 @@ int rpc_handle_protect(int fd, struct rpc_proc_protect *pprotect) {
 		r = 1;
 		goto error;
 	}
-	
+
 error:
+	return r;
+}
+
+int rpc_handle_scan(int fd, struct rpc_proc_scan* pScan) {
+	uint8_t *readData = NULL;
+	size_t n = 0;
+	int r = 0;
+
+	uint64_t length = pScan->endAddress - pScan->beginAddress;
+	uint64_t left = length;
+	uint64_t offset = 0;
+
+	struct proc *p = proc_find_by_pid(pScan->pid);
+	if (p) {
+		// test read
+		uint8_t test = 0;
+		r = proc_read_mem(p, (void *)pScan->beginAddress, 1, &test, &n);
+		if (r) {
+			rpc_send_status(fd, RPC_READ_ERROR);
+			r = 1;
+			goto error;
+		}
+
+		rpc_send_status(fd, RPC_SUCCESS);
+		if (net_errno) {
+			goto error;
+		}
+
+        uint8_t data = (uint8_t*)alloc(8);
+		readData = (uint8_t *)alloc(RPC_MAX_DATA_LEN);
+
+		while (left) {
+			uint64_t read = left;
+			if (left > RPC_MAX_DATA_LEN) {
+				read = RPC_MAX_DATA_LEN;
+			}
+
+			r = proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)read, readData, &n);
+			if (r) {
+				r = 1;
+				goto error;
+			} else {
+			    for (uint64_t i = 0; i < r; i += pScan->lenBytes) {
+                    bool isFound = false;
+                    for (int32_t index = 0; index < pScan->lenBytes - 1; index++) {
+                        isFound = pScan->bytes[index] == readData[i];
+                        if (!isFound)
+                            break;
+                    }
+                    if (isFound) {
+                        if (data) {
+                            *(uint64_t*)(data) = pScan->beginAddress + offset + i;
+                            r = rpc_send_data(fd, data, offset / sizeof(uint64_t));
+                            if (!r) {
+                                r = 1;
+                                goto error;
+                            }
+                        }
+                    }
+			    }
+				// send back data
+				*data = 0xDEADBEEF00ABCDEF;
+				r = rpc_send_data(fd, data, offset / sizeof(uint64_t));
+				dealloc(data);
+				if (!r) {
+					r = 1;
+					goto error;
+				}
+			}
+
+			left -= read;
+			offset += read;
+		}
+	} else {
+		rpc_send_status(fd, RPC_NO_PROC);
+		r = 1;
+		goto error;
+	}
+
+error:
+	if (readData) {
+		dealloc(readData);
+	}
+
 	return r;
 }
 
@@ -1166,7 +1250,7 @@ void rpc_server_thread(void *arg) {
 	if ((r = net_listen(fd, 16))) {
 		goto error;
 	}
-	
+
 	while (1) {
 		kthread_suspend_check();
 

@@ -29,6 +29,7 @@
 #define RPC_KERN_READ		0xBD00000B
 #define RPC_KERN_WRITE		0xBD00000C
 #define RPC_PROC_PROTECT	0xBD00000D
+#define RPC_PROC_SCAN       0xBD00000E
 
 #define RPC_VALID_CMD(cmd)	(((cmd & 0xFF000000) >> 24) == 0xBD)
 
@@ -172,6 +173,16 @@ struct rpc_proc_protect {
 } __attribute__((packed));
 
 #define RPC_PROC_PROTECT_SIZE 20
+
+struct rpc_proc_scan {
+    uint32_t pid;
+    uint64_t beginAddress;
+    uint64_t endAddress;
+    uint32_t lenBytes;
+    unsigned char bytes[8];
+} __attribute__((packed));
+
+#define RPC_PROC_SCAN_SIZE 36
 
 extern struct proc *krpcproc;
 
