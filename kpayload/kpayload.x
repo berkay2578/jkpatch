@@ -5,38 +5,25 @@ ENTRY(_start)
 
 PHDRS
 {
-	headers PT_PHDR PHDRS;
-	text PT_LOAD;
-	data PT_LOAD;
-	bss PT_LOAD;
+   code_seg PT_LOAD;
+   data_seg PT_LOAD;
 }
 
 SECTIONS
 {
-	. = SIZEOF_HEADERS;
-	
+	/* Code segment */
+	. = 0x926200000;
 	.text : {
-		*(.text)
-	} :text
-	
-	.rodata : {
-		*(.rodata)
-		*(.rodata.*)
-	} :text
-	
-	.data : {
-		*(.data)
-		*(.got)
-		*(.got.*)
-	} :data
-	
-	.bss : {
-		*(.bss)
-		*(COMMON)
-	} :bss
-	
-	/DISCARD/ :
-	{
-		*(*)
-	}
+		*(.text.start)
+		*(.text*)
+	} : code_seg
+	.rodata : { *(.rodata) *(.rodata*) } : code_seg
+
+	/* Data segment */
+	. = 0x926300000;
+	.data : { *(.data) } : data_seg
+	.bss  : { *(.bss) }  : data_seg
+
+	. = 0x9263ffff8;
+	.sc_rop : { *(.sc_rop) } : data_seg
 }
