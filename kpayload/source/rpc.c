@@ -1070,7 +1070,7 @@ int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
                         break;
                   }
                   if (isFound) {
-                     r = rpc_send_data(fd, curAddress, sizeof(uint64_t));
+                     r = rpc_send_data(fd, &curAddress, sizeof(uint64_t));
                      if (!r) {
                         r = 1;
                         goto error;

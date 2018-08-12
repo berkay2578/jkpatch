@@ -4,8 +4,8 @@
 #ifndef _RPC_H
 #define _RPC_H
 
-#include "../librpc/rpcasm/rpcasm.h"
 #include "jkpayload.h"
+#include "../librpc/rpcasm/rpcasm.h"
 #include "net.h"
 #include "proc.h"
 
