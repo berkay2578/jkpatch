@@ -218,7 +218,8 @@ int elf_mapped_size(void *elf, size_t *msize) {
             s = delta;
          }
       }
-   } else {
+   }
+   else {
       // use sections
       for (int i = 0; i < ehdr->e_shnum; i++) {
          struct Elf64_Shdr *shdr = elf_section(ehdr, i);
@@ -250,7 +251,8 @@ int proc_map_elf(struct proc *p, void *elf, void *exec) {
             proc_write_mem(p, (void *)((uint8_t *)exec + phdr->p_paddr), phdr->p_filesz, (void *)((uint8_t *)elf + phdr->p_offset), NULL);
          }
       }
-   } else {
+   }
+   else {
       // use sections
       for (int i = 0; i < ehdr->e_shnum; i++) {
          struct Elf64_Shdr *shdr = elf_section(ehdr, i);
@@ -354,7 +356,8 @@ int rpc_send_data(int fd, void *data, int length) {
    while (left > 0) {
       if (left > RPC_MAX_DATA_LEN) {
          sent = net_send(fd, data + offset, RPC_MAX_DATA_LEN);
-      } else {
+      }
+      else {
          sent = net_send(fd, data + offset, left);
       }
 
@@ -377,7 +380,8 @@ int rpc_recv_data(int fd, void *data, int length, int force) {
    while (left > 0) {
       if (left > RPC_MAX_DATA_LEN) {
          recv = net_recv(fd, data + offset, RPC_MAX_DATA_LEN);
-      } else {
+      }
+      else {
          recv = net_recv(fd, data + offset, left);
       }
 
@@ -402,7 +406,8 @@ int rpc_send_status(int fd, uint32_t status) {
    uint32_t d = status;
    if (rpc_send_data(fd, &d, sizeof(uint32_t)) == sizeof(uint32_t)) {
       return 0;
-   } else {
+   }
+   else {
       return 1;
    }
 }
@@ -444,7 +449,8 @@ int rpc_handle_read(int fd, struct rpc_proc_read *pread) {
          if (r) {
             r = 1;
             goto error;
-         } else {
+         }
+         else {
             // send back data
             r = rpc_send_data(fd, data, read);
             if (!r) {
@@ -456,7 +462,8 @@ int rpc_handle_read(int fd, struct rpc_proc_read *pread) {
          left -= read;
          offset += read;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -501,10 +508,12 @@ int rpc_handle_write(int fd, struct rpc_proc_write *pwrite) {
          rpc_send_status(fd, RPC_WRITE_ERROR);
          r = 1;
          goto error;
-      } else {
+      }
+      else {
          rpc_send_status(fd, RPC_SUCCESS);
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -698,7 +707,8 @@ int rpc_handle_install(int fd, struct rpc_proc_install1 *pinstall) {
       if (net_errno) {
          goto error;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -777,7 +787,8 @@ int rpc_handle_call(int fd, struct rpc_proc_call1 *pcall) {
       if (net_errno) {
          goto error;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -845,7 +856,8 @@ int rpc_handle_elf(int fd, struct rpc_proc_elf *pelf) {
       }
 
       rpc_send_status(fd, RPC_SUCCESS);
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -974,7 +986,8 @@ int rpc_handle_protect(int fd, struct rpc_proc_protect *pprotect) {
       end = (void *)(pprotect->address + pprotect->length);
       proc_mprotect(p, addr, end, pprotect->newprot);
       rpc_send_status(fd, RPC_SUCCESS);
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -984,84 +997,111 @@ error:
    return r;
 }
 
+size_t rpc_proc_scan_getSizeOfValueType(enum scan_ValueType valType) {
+   switch (valType) {
+      case _int8:
+         return 1;
+      case _int16:
+         return 2;
+      case _int32:
+         return 4;
+      case _int64:
+         return 8;
+      case _float:
+         return 4;
+      case _double:
+         return 8;
+      case _arrBytes:
+         return NULL;
+      case _string:
+         return NULL;
+   }
+}
 int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
-   uint8_t *readData = NULL;
-   size_t n = 0;
-   int r = 0;
+   int r;
+   // get data
+   if (pScan->lenData) {
+      pScan->data = (uint8_t *)alloc(pScan->lenData);
+      if (!pScan->data) {
+         goto error;
+      }
 
-   uint64_t length = pScan->endAddress - pScan->beginAddress;
-   uint64_t left = length;
-   uint64_t offset = 0;
+      r = rpc_recv_data(fd, pScan->data, pScan->lenData, 1);
+      if (!r) {
+         goto error;
+      }
+   }
+   else {
+      pScan->data = NULL;
+   }
 
    struct proc *p = proc_find_by_pid(pScan->pid);
    if (p) {
-      // test read
-      uint8_t test = 0;
-      r = proc_read_mem(p, (void *)pScan->beginAddress, 1, &test, &n);
-      if (r) {
-         rpc_send_status(fd, RPC_READ_ERROR);
-         r = 1;
-         goto error;
-      }
+      size_t scanDataLength = rpc_proc_scan_getSizeOfValueType(pScan->valueType);
+      if (!scanDataLength)
+         scanDataLength =  pScan->lenData;
 
-      rpc_send_status(fd, RPC_SUCCESS);
-      if (net_errno) {
-         goto error;
-      }
+      uint64_t scanLength = pScan->endAddress - pScan->beginAddress;
+      uint64_t leftToRead = scanLength;
+      uint64_t offset = 0;
 
-      uint64_t *pData = (uint64_t *)alloc(8);
-      readData = (uint8_t *)alloc(RPC_MAX_DATA_LEN);
+      unsigned char *arrReadData = (uint8_t *)alloc(RPC_MAX_DATA_LEN);
 
-      while (left) {
-         uint64_t read = left;
-         if (left > RPC_MAX_DATA_LEN) {
-            read = RPC_MAX_DATA_LEN;
+      while (leftToRead) {
+         uint64_t amountToRead = leftToRead;
+         if (leftToRead > RPC_MAX_DATA_LEN) {
+            amountToRead = RPC_MAX_DATA_LEN;
          }
 
-         r = proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)read, readData, &n);
+         size_t amountRead;
+         r = proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)amountToRead, arrReadData, &amountRead);
          if (r) {
             r = 1;
             goto error;
-         } else {
-            for (uint64_t i = 0; i < r; i += pScan->lenBytes) {
-               bool isFound = false;
-               for (int32_t index = 0; index < pScan->lenBytes - 1; index++) {
-                  isFound = pScan->bytes[index] == readData[i];
-                  if (!isFound)
-                     break;
+         }
+         else {
+            for (uint64_t i = 0; i < amountRead; i += scanDataLength) {
+               uint64_t curAddress = pScan->beginAddress + offset + i;
+               if (scanDataLength == pScan->lenData) {
+                  bool isFound = false;
+                  for (uint32_t j = 0; j < scanDataLength - 1; j++) {
+                     isFound = *(unsigned char*)curAddress == pScan->data[j];
+                     if (!isFound)
+                        break;
+                  }
+                  if (isFound) {
+                     r = rpc_send_data(fd, curAddress, sizeof(uint64_t));
+                     if (!r) {
+                        r = 1;
+                        goto error;
+                     }
+                  }
                }
-               if (isFound) {
-                  *pData = pScan->beginAddress + offset + i;
-                  r = rpc_send_data(fd, pData, sizeof(uint64_t));
-                  if (!r) {
-                     r = 1;
-                     goto error;
+               else {
+                  switch (pScan->compareType) {
+                     case ExactValue:
+                     {
+
+                     }
+                     break;
                   }
                }
             }
-            // send back data
-            *pData = 0xDEADBEEF00ABCDEF;
-            r = rpc_send_data(fd, pData, sizeof(uint64_t));
-            dealloc(pData);
-            if (!r) {
-               r = 1;
-               goto error;
-            }
          }
 
-         left -= read;
-         offset += read;
+         leftToRead -= amountToRead;
+         offset += amountToRead;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
    }
 
 error:
-   if (readData) {
-      dealloc(readData);
-   }
+   if (pScan->data)
+      dealloc(pScan->data);
 
    return r;
 }
@@ -1074,59 +1114,73 @@ int rpc_cmd_handler(int fd, struct rpc_packet *packet) {
    }
 
    switch (packet->cmd) {
-      case RPC_PROC_READ: {
+      case RPC_PROC_READ:
+      {
          rpc_handle_read(fd, (struct rpc_proc_read *)packet->data);
          break;
       }
-      case RPC_PROC_WRITE: {
+      case RPC_PROC_WRITE:
+      {
          rpc_handle_write(fd, (struct rpc_proc_write *)packet->data);
          break;
       }
-      case RPC_PROC_LIST: {
+      case RPC_PROC_LIST:
+      {
          rpc_handle_list(fd, NULL);
          break;
       }
-      case RPC_PROC_INFO: {
+      case RPC_PROC_INFO:
+      {
          rpc_handle_info(fd, (struct rpc_proc_info1 *)packet->data);
          break;
       }
-      case RPC_PROC_INTALL: {
+      case RPC_PROC_INTALL:
+      {
          rpc_handle_install(fd, (struct rpc_proc_install1 *)packet->data);
          break;
       }
-      case RPC_PROC_CALL: {
+      case RPC_PROC_CALL:
+      {
          rpc_handle_call(fd, (struct rpc_proc_call1 *)packet->data);
          break;
       }
-      case RPC_PROC_ELF: {
+      case RPC_PROC_ELF:
+      {
          //rpc_handle_elf(fd, (struct rpc_proc_elf *)packet->data);
          break;
       }
-      case RPC_END: {
+      case RPC_END:
+      {
          return 1;
          break;
       }
-      case RPC_REBOOT: {
+      case RPC_REBOOT:
+      {
          kern_reboot(0);
          break;
       }
-      case RPC_KERN_BASE: {
+      case RPC_KERN_BASE:
+      {
          rpc_handle_kbase(fd, NULL);
          break;
       }
-      case RPC_KERN_READ: {
+      case RPC_KERN_READ:
+      {
          rpc_handle_kread(fd, (struct rpc_kern_read *)packet->data);
          break;
       }
-      case RPC_KERN_WRITE: {
+      case RPC_KERN_WRITE:
+      {
          rpc_handle_kwrite(fd, (struct rpc_kern_write *)packet->data);
          break;
       }
-      case RPC_PROC_PROTECT: {
+      case RPC_PROC_PROTECT:
+      {
          rpc_handle_protect(fd, (struct rpc_proc_protect *)packet->data);
          break;
       }
-      case RPC_PROC_SCAN: {
+      case RPC_PROC_SCAN:
+      {
          rpc_handle_scan(fd, (struct rpc_proc_scan *)packet->data);
          break;
       }
@@ -1192,7 +1246,8 @@ void rpc_handler(void *vfd) {
 
          // set data
          packet.data = data;
-      } else {
+      }
+      else {
          packet.data = NULL;
       }
 
