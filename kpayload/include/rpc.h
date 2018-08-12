@@ -179,10 +179,10 @@ struct rpc_proc_scan {
     uint64_t beginAddress;
     uint64_t endAddress;
     uint32_t lenBytes;
-    unsigned char bytes[8];
+    unsigned char bytes[24];
 } __attribute__((packed));
 
-#define RPC_PROC_SCAN_SIZE 36
+#define RPC_PROC_SCAN_SIZE 48
 
 extern struct proc *krpcproc;
 

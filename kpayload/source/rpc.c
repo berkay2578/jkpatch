@@ -1126,6 +1126,10 @@ int rpc_cmd_handler(int fd, struct rpc_packet *packet) {
          rpc_handle_protect(fd, (struct rpc_proc_protect *)packet->data);
          break;
       }
+      case RPC_PROC_SCAN: {
+         rpc_handle_scan(fd, (struct rpc_proc_scan *)packet->data);
+         break;
+      }
    }
 
    return 0;
