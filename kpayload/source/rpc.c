@@ -2,6 +2,7 @@
 /* 2/1/2018 */
 
 #include "rpc.h"
+#include <math.h>
 #include <stdbool.h>
 
 struct proc *krpcproc;
@@ -218,7 +219,8 @@ int elf_mapped_size(void *elf, size_t *msize) {
             s = delta;
          }
       }
-   } else {
+   }
+   else {
       // use sections
       for (int i = 0; i < ehdr->e_shnum; i++) {
          struct Elf64_Shdr *shdr = elf_section(ehdr, i);
@@ -250,7 +252,8 @@ int proc_map_elf(struct proc *p, void *elf, void *exec) {
             proc_write_mem(p, (void *)((uint8_t *)exec + phdr->p_paddr), phdr->p_filesz, (void *)((uint8_t *)elf + phdr->p_offset), NULL);
          }
       }
-   } else {
+   }
+   else {
       // use sections
       for (int i = 0; i < ehdr->e_shnum; i++) {
          struct Elf64_Shdr *shdr = elf_section(ehdr, i);
@@ -354,7 +357,8 @@ int rpc_send_data(int fd, void *data, int length) {
    while (left > 0) {
       if (left > RPC_MAX_DATA_LEN) {
          sent = net_send(fd, data + offset, RPC_MAX_DATA_LEN);
-      } else {
+      }
+      else {
          sent = net_send(fd, data + offset, left);
       }
 
@@ -377,7 +381,8 @@ int rpc_recv_data(int fd, void *data, int length, int force) {
    while (left > 0) {
       if (left > RPC_MAX_DATA_LEN) {
          recv = net_recv(fd, data + offset, RPC_MAX_DATA_LEN);
-      } else {
+      }
+      else {
          recv = net_recv(fd, data + offset, left);
       }
 
@@ -402,7 +407,8 @@ int rpc_send_status(int fd, uint32_t status) {
    uint32_t d = status;
    if (rpc_send_data(fd, &d, sizeof(uint32_t)) == sizeof(uint32_t)) {
       return 0;
-   } else {
+   }
+   else {
       return 1;
    }
 }
@@ -444,7 +450,8 @@ int rpc_handle_read(int fd, struct rpc_proc_read *pread) {
          if (r) {
             r = 1;
             goto error;
-         } else {
+         }
+         else {
             // send back data
             r = rpc_send_data(fd, data, read);
             if (!r) {
@@ -456,7 +463,8 @@ int rpc_handle_read(int fd, struct rpc_proc_read *pread) {
          left -= read;
          offset += read;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -501,10 +509,12 @@ int rpc_handle_write(int fd, struct rpc_proc_write *pwrite) {
          rpc_send_status(fd, RPC_WRITE_ERROR);
          r = 1;
          goto error;
-      } else {
+      }
+      else {
          rpc_send_status(fd, RPC_SUCCESS);
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -698,7 +708,8 @@ int rpc_handle_install(int fd, struct rpc_proc_install1 *pinstall) {
       if (net_errno) {
          goto error;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -777,7 +788,8 @@ int rpc_handle_call(int fd, struct rpc_proc_call1 *pcall) {
       if (net_errno) {
          goto error;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -845,7 +857,8 @@ int rpc_handle_elf(int fd, struct rpc_proc_elf *pelf) {
       }
 
       rpc_send_status(fd, RPC_SUCCESS);
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -974,7 +987,8 @@ int rpc_handle_protect(int fd, struct rpc_proc_protect *pprotect) {
       end = (void *)(pprotect->address + pprotect->length);
       proc_mprotect(p, addr, end, pprotect->newprot);
       rpc_send_status(fd, RPC_SUCCESS);
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -986,28 +1000,30 @@ error:
 
 size_t rpc_proc_scan_getSizeOfValueType(enum scan_ValueType valType) {
    switch (valType) {
-      case _int8:
+      case valTypeUInt8:
+      case valTypeInt8:
          return 1;
-      case _int16:
+      case valTypeUInt16:
+      case valTypeInt16:
          return 2;
-      case _int32:
+      case valTypeUInt32:
+      case valTypeInt32:
+      case valTypeFloat:
          return 4;
-      case _int64:
+      case valTypeUInt64:
+      case valTypeInt64:
+      case valTypeDouble:
          return 8;
-      case _float:
-         return 4;
-      case _double:
-         return 8;
-      case _arrBytes:
-         return NULL;
-      case _string:
+      case valTypeArrBytes:
+      case valTypeString:
          return NULL;
    }
 }
 bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueType valType, size_t valTypeLength,
                                  unsigned char *pScanValue, unsigned char *pMemoryValue, unsigned char *pExtraValue) {
    switch (cmpType) {
-      case ExactValue: {
+      case cmpTypeExactValue:
+      {
          bool isFound = false;
          for (size_t j = 0; j < valTypeLength - 1; j++) {
             isFound = (pScanValue[j] == pMemoryValue[j]);
@@ -1016,52 +1032,331 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
          }
          return isFound;
       }
+      case cmpTypeFuzzyValue:
+      {
+         if (valType == valTypeFloat)
+            return fabs(*(float *)pScanValue - *(float *)pMemoryValue) < 1.0f;
+         else if (valType == valTypeDouble)
+            return fabs(*(double *)pScanValue - *(double *)pMemoryValue) < 1.0f;
+         else
+            return false;
+      }
+      case cmpTypeBiggerThan:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue > pScanValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue > *(int8_t *)pScanValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue > *(uint16_t *)pScanValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue > *(int16_t *)pScanValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue > *(uint32_t *)pScanValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue > *(int32_t *)pScanValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue > *(uint64_t *)pScanValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue > *(int64_t *)pScanValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue > *(float *)pScanValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue > *(double *)pScanValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeSmallerThan:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue < pScanValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue < *(int8_t *)pScanValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue < *(uint16_t *)pScanValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue < *(int16_t *)pScanValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue < *(uint32_t *)pScanValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue < *(int32_t *)pScanValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue < *(uint64_t *)pScanValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue < *(int64_t *)pScanValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue < *(float *)pScanValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue < *(double *)pScanValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeValueBetween:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               if (*pExtraValue > *pScanValue)
+                  return *pScanValue < *pMemoryValue < *pExtraValue;
+               return *pScanValue > *pMemoryValue > *pExtraValue;
+            case valTypeInt8:
+               if (*(int8_t *)pExtraValue > *(int8_t *)pScanValue)
+                  return *(int8_t *)pScanValue < *(int8_t *)pMemoryValue < *(int8_t*)pExtraValue;
+               return *(int8_t *)pScanValue > *(int8_t *)pMemoryValue > *(int8_t *)pExtraValue;
+            case valTypeUInt16:
+               if (*(uint16_t *)pExtraValue > *(uint16_t *)pScanValue)
+                  return *(uint16_t *)pScanValue < *(uint16_t *)pMemoryValue < *(uint16_t*)pExtraValue;
+               return *(uint16_t *)pScanValue > *(uint16_t *)pMemoryValue > *(uint16_t *)pExtraValue;
+            case valTypeInt16:
+               if (*(int16_t *)pExtraValue > *(int16_t *)pScanValue)
+                  return *(int16_t *)pScanValue < *(int16_t *)pMemoryValue < *(int16_t*)pExtraValue;
+               return *(int16_t *)pScanValue > *(int16_t *)pMemoryValue > *(int16_t *)pExtraValue;
+            case valTypeUInt32:
+               if (*(uint32_t *)pExtraValue > *(uint32_t *)pScanValue)
+                  return *(uint32_t *)pScanValue < *(uint32_t *)pMemoryValue < *(uint32_t*)pExtraValue;
+               return *(uint32_t *)pScanValue > *(uint32_t *)pMemoryValue > *(uint32_t *)pExtraValue;
+            case valTypeInt32:
+               if (*(int32_t *)pExtraValue > *(int32_t *)pScanValue)
+                  return *(int32_t *)pScanValue < *(int32_t *)pMemoryValue < *(int32_t*)pExtraValue;
+               return *(int32_t *)pScanValue > *(int32_t *)pMemoryValue > *(int32_t *)pExtraValue;
+            case valTypeUInt64:
+               if (*(uint64_t *)pExtraValue > *(uint64_t *)pScanValue)
+                  return *(uint64_t *)pScanValue < *(uint64_t *)pMemoryValue < *(uint64_t*)pExtraValue;
+               return *(uint64_t *)pScanValue > *(uint64_t *)pMemoryValue > *(uint64_t *)pExtraValue;
+            case valTypeInt64:
+               if (*(int64_t *)pExtraValue > *(int64_t *)pScanValue)
+                  return *(int64_t *)pScanValue < *(int64_t *)pMemoryValue < *(int64_t*)pExtraValue;
+               return *(int64_t *)pScanValue > *(int64_t *)pMemoryValue > *(int64_t *)pExtraValue;
+            case valTypeFloat:
+               if (*(float *)pExtraValue > *(float *)pScanValue)
+                  return *(float *)pScanValue < *(float *)pMemoryValue < *(float*)pExtraValue;
+               return *(float *)pScanValue > *(float *)pMemoryValue > *(float *)pExtraValue;
+            case valTypeDouble:
+               if (*(double *)pExtraValue > *(double *)pScanValue)
+                  return *(double *)pScanValue < *(double *)pMemoryValue < *(double*)pExtraValue;
+               return *(double *)pScanValue > *(double *)pMemoryValue > *(double *)pExtraValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeIncreasedValue:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue > *pExtraValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue > *(int8_t *)pExtraValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue > *(uint16_t *)pExtraValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue > *(int16_t *)pExtraValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue > *(uint32_t *)pExtraValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue > *(int32_t *)pExtraValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue > *(uint64_t *)pExtraValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue > *(int64_t *)pExtraValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue > *(float *)pExtraValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue > *(double *)pExtraValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeIncreasedValueBy:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue == (*pExtraValue + *pScanValue);
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue == (*(int8_t *)pExtraValue + *(int8_t *)pScanValue);
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue == (*(uint16_t *)pExtraValue + *(uint16_t *)pScanValue);
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue == (*(int16_t *)pExtraValue + *(int16_t *)pScanValue);
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue == (*(uint32_t *)pExtraValue + *(uint32_t *)pScanValue);
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue == (*(int32_t *)pExtraValue + *(int32_t *)pScanValue);
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue == (*(uint64_t *)pExtraValue + *(uint64_t *)pScanValue);
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue == (*(int64_t *)pExtraValue + *(int64_t *)pScanValue);
+            case valTypeFloat:
+               return *(float *)pMemoryValue == (*(float *)pExtraValue + *(float *)pScanValue);
+            case valTypeDouble:
+               return *(double *)pMemoryValue == (*(double *)pExtraValue + *(float *)pScanValue);
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeDecreasedValue:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue < *pExtraValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue < *(int8_t *)pExtraValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue < *(uint16_t *)pExtraValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue < *(int16_t *)pExtraValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue < *(uint32_t *)pExtraValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue < *(int32_t *)pExtraValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue < *(uint64_t *)pExtraValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue < *(int64_t *)pExtraValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue < *(float *)pExtraValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue < *(double *)pExtraValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeDecreasedValueBy:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue == (*pExtraValue - *pScanValue);
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue == (*(int8_t *)pExtraValue - *(int8_t *)pScanValue);
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue == (*(uint16_t *)pExtraValue - *(uint16_t *)pScanValue);
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue == (*(int16_t *)pExtraValue - *(int16_t *)pScanValue);
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue == (*(uint32_t *)pExtraValue - *(uint32_t *)pScanValue);
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue == (*(int32_t *)pExtraValue - *(int32_t *)pScanValue);
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue == (*(uint64_t *)pExtraValue - *(uint64_t *)pScanValue);
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue == (*(int64_t *)pExtraValue - *(int64_t *)pScanValue);
+            case valTypeFloat:
+               return *(float *)pMemoryValue == (*(float *)pExtraValue - *(float *)pScanValue);
+            case valTypeDouble:
+               return *(double *)pMemoryValue == (*(double *)pExtraValue - *(float *)pScanValue);
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeChangedValue:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue != pExtraValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue != *(int8_t *)pExtraValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue != *(uint16_t *)pExtraValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue != *(int16_t *)pExtraValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue != *(uint32_t *)pExtraValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue != *(int32_t *)pExtraValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue != *(uint64_t *)pExtraValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue != *(int64_t *)pExtraValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue != *(float *)pExtraValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue != *(double *)pExtraValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeUnchangedValue:
+      {
+         switch (valType) {
+            case valTypeUInt8:
+               return *pMemoryValue == pExtraValue;
+            case valTypeInt8:
+               return *(int8_t *)pMemoryValue == *(int8_t *)pExtraValue;
+            case valTypeUInt16:
+               return *(uint16_t *)pMemoryValue == *(uint16_t *)pExtraValue;
+            case valTypeInt16:
+               return *(int16_t *)pMemoryValue == *(int16_t *)pExtraValue;
+            case valTypeUInt32:
+               return *(uint32_t *)pMemoryValue == *(uint32_t *)pExtraValue;
+            case valTypeInt32:
+               return *(int32_t *)pMemoryValue == *(int32_t *)pExtraValue;
+            case valTypeUInt64:
+               return *(uint64_t *)pMemoryValue == *(uint64_t *)pExtraValue;
+            case valTypeInt64:
+               return *(int64_t *)pMemoryValue == *(int64_t *)pExtraValue;
+            case valTypeFloat:
+               return *(float *)pMemoryValue == *(float *)pExtraValue;
+            case valTypeDouble:
+               return *(double *)pMemoryValue == *(double *)pExtraValue;
+            case valTypeArrBytes:
+            case valTypeString:
+               return false;
+         }
+      }
+      case cmpTypeUnknownInitialValue:
+      {
+         return true;
+      }
    }
    return false;
 }
 int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
    int r;
-   // get data
-   if (pScan->lenData) {
-      pScan->data = (uint8_t *)alloc(pScan->lenData);
-      if (!pScan->data) {
-         goto error;
-      }
 
-      r = rpc_recv_data(fd, pScan->data, pScan->lenData, 1);
-      if (!r) {
-         goto error;
-      }
-   } else {
-      pScan->data = NULL;
-   }
+   size_t valueLength = rpc_proc_scan_getSizeOfValueType(pScan->valueType);
+   if (!valueLength)
+      valueLength = pScan->lenData;
+   pScan->data = (uint8_t *)alloc(pScan->lenData);
+   if (!pScan->data)
+      goto error;
+   r = rpc_recv_data(fd, pScan->data, pScan->lenData, 1);
+   if (!r)
+      goto error;
 
    struct proc *p = proc_find_by_pid(pScan->pid);
    if (p) {
-      size_t scanDataLength = rpc_proc_scan_getSizeOfValueType(pScan->valueType);
-      if (!scanDataLength)
-         scanDataLength = pScan->lenData;
-
       uint64_t scanLength = pScan->endAddress - pScan->beginAddress;
       uint64_t leftToRead = scanLength;
       uint64_t offset = 0;
 
-      unsigned char *arrReadData = (uint8_t *)alloc(RPC_MAX_DATA_LEN);
+      void *pReadData = alloc(RPC_MAX_DATA_LEN);
+      unsigned char *pExtraValue = valueLength == pScan->lenData ? NULL : &pScan->data[valueLength];
       while (leftToRead) {
          uint64_t amountToRead = leftToRead;
-         if (leftToRead > RPC_MAX_DATA_LEN) {
+         if (leftToRead > RPC_MAX_DATA_LEN)
             amountToRead = RPC_MAX_DATA_LEN;
-         }
 
          size_t amountRead;
-         r = proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)amountToRead, arrReadData, &amountRead);
+         r = proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)amountToRead, pReadData, &amountRead);
          if (r) {
             r = 1;
             goto error;
-         } else {
-            for (uint64_t i = 0; i < amountRead; i += scanDataLength) {
+         }
+         else {
+            for (uint64_t i = 0; i < amountRead; i += valueLength) {
                uint64_t curAddress = pScan->beginAddress + offset + i;
-               if (rpc_proc_scan_compareValues(pScan->compareType, pScan->valueType, scanDataLength, pScan->data, arrReadData, &pScan->data[scanDataLength])) {
+               if (rpc_proc_scan_compareValues(pScan->compareType, pScan->valueType, valueLength,
+                                               pScan->data, (unsigned char *)pReadData, pExtraValue)) {
                   r = rpc_send_data(fd, &curAddress, sizeof(uint64_t));
                   if (!r) {
                      r = 1;
@@ -1074,7 +1369,8 @@ int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
          leftToRead -= amountToRead;
          offset += amountToRead;
       }
-   } else {
+   }
+   else {
       rpc_send_status(fd, RPC_NO_PROC);
       r = 1;
       goto error;
@@ -1095,59 +1391,73 @@ int rpc_cmd_handler(int fd, struct rpc_packet *packet) {
    }
 
    switch (packet->cmd) {
-      case RPC_PROC_READ: {
+      case RPC_PROC_READ:
+      {
          rpc_handle_read(fd, (struct rpc_proc_read *)packet->data);
          break;
       }
-      case RPC_PROC_WRITE: {
+      case RPC_PROC_WRITE:
+      {
          rpc_handle_write(fd, (struct rpc_proc_write *)packet->data);
          break;
       }
-      case RPC_PROC_LIST: {
+      case RPC_PROC_LIST:
+      {
          rpc_handle_list(fd, NULL);
          break;
       }
-      case RPC_PROC_INFO: {
+      case RPC_PROC_INFO:
+      {
          rpc_handle_info(fd, (struct rpc_proc_info1 *)packet->data);
          break;
       }
-      case RPC_PROC_INTALL: {
+      case RPC_PROC_INTALL:
+      {
          rpc_handle_install(fd, (struct rpc_proc_install1 *)packet->data);
          break;
       }
-      case RPC_PROC_CALL: {
+      case RPC_PROC_CALL:
+      {
          rpc_handle_call(fd, (struct rpc_proc_call1 *)packet->data);
          break;
       }
-      case RPC_PROC_ELF: {
+      case RPC_PROC_ELF:
+      {
          //rpc_handle_elf(fd, (struct rpc_proc_elf *)packet->data);
          break;
       }
-      case RPC_END: {
+      case RPC_END:
+      {
          return 1;
          break;
       }
-      case RPC_REBOOT: {
+      case RPC_REBOOT:
+      {
          kern_reboot(0);
          break;
       }
-      case RPC_KERN_BASE: {
+      case RPC_KERN_BASE:
+      {
          rpc_handle_kbase(fd, NULL);
          break;
       }
-      case RPC_KERN_READ: {
+      case RPC_KERN_READ:
+      {
          rpc_handle_kread(fd, (struct rpc_kern_read *)packet->data);
          break;
       }
-      case RPC_KERN_WRITE: {
+      case RPC_KERN_WRITE:
+      {
          rpc_handle_kwrite(fd, (struct rpc_kern_write *)packet->data);
          break;
       }
-      case RPC_PROC_PROTECT: {
+      case RPC_PROC_PROTECT:
+      {
          rpc_handle_protect(fd, (struct rpc_proc_protect *)packet->data);
          break;
       }
-      case RPC_PROC_SCAN: {
+      case RPC_PROC_SCAN:
+      {
          rpc_handle_scan(fd, (struct rpc_proc_scan *)packet->data);
          break;
       }
@@ -1213,7 +1523,8 @@ void rpc_handler(void *vfd) {
 
          // set data
          packet.data = data;
-      } else {
+      }
+      else {
          packet.data = NULL;
       }
 
