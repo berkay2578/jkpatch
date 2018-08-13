@@ -2,7 +2,6 @@
 /* 2/1/2018 */
 
 #include "rpc.h"
-#include <math.h>
 #include <stdbool.h>
 
 struct proc *krpcproc;
@@ -1016,6 +1015,7 @@ size_t rpc_proc_scan_getSizeOfValueType(enum scan_ValueType valType) {
          return 8;
       case valTypeArrBytes:
       case valTypeString:
+      default:
          return NULL;
    }
 }
@@ -1034,18 +1034,27 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
       }
       case cmpTypeFuzzyValue:
       {
-         if (valType == valTypeFloat)
-            return fabs(*(float *)pScanValue - *(float *)pMemoryValue) < 1.0f;
-         else if (valType == valTypeDouble)
-            return fabs(*(double *)pScanValue - *(double *)pMemoryValue) < 1.0f;
-         else
+         if (valType == valTypeFloat) {
+            float diff = *(float *)pScanValue - *(float *)pMemoryValue;
+            if (diff < 0.0f)
+               diff = *(float *)pMemoryValue - *(float *)pScanValue;
+            return diff < 1.0f;
+         }
+         else if (valType == valTypeDouble) {
+            float diff = *(double *)pScanValue - *(double *)pMemoryValue;
+            if (diff < 0.0)
+               diff = *(double *)pMemoryValue - *(double *)pScanValue;
+            return diff < 1.0;
+         }
+         else {
             return false;
+         }
       }
       case cmpTypeBiggerThan:
       {
          switch (valType) {
             case valTypeUInt8:
-               return *pMemoryValue > pScanValue;
+               return *pMemoryValue > *pScanValue;
             case valTypeInt8:
                return *(int8_t *)pMemoryValue > *(int8_t *)pScanValue;
             case valTypeUInt16:
@@ -1073,7 +1082,7 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
       {
          switch (valType) {
             case valTypeUInt8:
-               return *pMemoryValue < pScanValue;
+               return *pMemoryValue < *pScanValue;
             case valTypeInt8:
                return *(int8_t *)pMemoryValue < *(int8_t *)pScanValue;
             case valTypeUInt16:
@@ -1102,44 +1111,44 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
          switch (valType) {
             case valTypeUInt8:
                if (*pExtraValue > *pScanValue)
-                  return *pScanValue < *pMemoryValue < *pExtraValue;
-               return *pScanValue > *pMemoryValue > *pExtraValue;
+                  return *pMemoryValue > *pScanValue && *pMemoryValue < *pExtraValue;
+               return *pMemoryValue < *pScanValue && *pMemoryValue > *pExtraValue;
             case valTypeInt8:
                if (*(int8_t *)pExtraValue > *(int8_t *)pScanValue)
-                  return *(int8_t *)pScanValue < *(int8_t *)pMemoryValue < *(int8_t*)pExtraValue;
-               return *(int8_t *)pScanValue > *(int8_t *)pMemoryValue > *(int8_t *)pExtraValue;
+                  return *(int8_t *)pMemoryValue > *(int8_t *)pScanValue && *(int8_t *)pMemoryValue < *(int8_t*)pExtraValue;
+               return *(int8_t *)pMemoryValue < *(int8_t *)pScanValue && *(int8_t *)pMemoryValue > *(int8_t *)pExtraValue;
             case valTypeUInt16:
                if (*(uint16_t *)pExtraValue > *(uint16_t *)pScanValue)
-                  return *(uint16_t *)pScanValue < *(uint16_t *)pMemoryValue < *(uint16_t*)pExtraValue;
-               return *(uint16_t *)pScanValue > *(uint16_t *)pMemoryValue > *(uint16_t *)pExtraValue;
+                  return *(uint16_t *)pMemoryValue > *(uint16_t *)pScanValue && *(uint16_t *)pMemoryValue < *(uint16_t*)pExtraValue;
+               return *(uint16_t *)pMemoryValue < *(uint16_t *)pScanValue && *(uint16_t *)pMemoryValue > *(uint16_t *)pExtraValue;
             case valTypeInt16:
                if (*(int16_t *)pExtraValue > *(int16_t *)pScanValue)
-                  return *(int16_t *)pScanValue < *(int16_t *)pMemoryValue < *(int16_t*)pExtraValue;
-               return *(int16_t *)pScanValue > *(int16_t *)pMemoryValue > *(int16_t *)pExtraValue;
+                  return *(int16_t *)pMemoryValue > *(int16_t *)pScanValue && *(int16_t *)pMemoryValue < *(int16_t*)pExtraValue;
+               return *(int16_t *)pMemoryValue < *(int16_t *)pScanValue && *(int16_t *)pMemoryValue > *(int16_t *)pExtraValue;
             case valTypeUInt32:
                if (*(uint32_t *)pExtraValue > *(uint32_t *)pScanValue)
-                  return *(uint32_t *)pScanValue < *(uint32_t *)pMemoryValue < *(uint32_t*)pExtraValue;
-               return *(uint32_t *)pScanValue > *(uint32_t *)pMemoryValue > *(uint32_t *)pExtraValue;
+                  return *(uint32_t *)pMemoryValue > *(uint32_t *)pScanValue && *(uint32_t *)pMemoryValue < *(uint32_t*)pExtraValue;
+               return *(uint32_t *)pMemoryValue < *(uint32_t *)pScanValue && *(uint32_t *)pMemoryValue > *(uint32_t *)pExtraValue;
             case valTypeInt32:
                if (*(int32_t *)pExtraValue > *(int32_t *)pScanValue)
-                  return *(int32_t *)pScanValue < *(int32_t *)pMemoryValue < *(int32_t*)pExtraValue;
-               return *(int32_t *)pScanValue > *(int32_t *)pMemoryValue > *(int32_t *)pExtraValue;
+                  return *(int32_t *)pMemoryValue > *(int32_t *)pScanValue && *(int32_t *)pMemoryValue < *(int32_t*)pExtraValue;
+               return *(int32_t *)pMemoryValue < *(int32_t *)pScanValue && *(int32_t *)pMemoryValue > *(int32_t *)pExtraValue;
             case valTypeUInt64:
                if (*(uint64_t *)pExtraValue > *(uint64_t *)pScanValue)
-                  return *(uint64_t *)pScanValue < *(uint64_t *)pMemoryValue < *(uint64_t*)pExtraValue;
-               return *(uint64_t *)pScanValue > *(uint64_t *)pMemoryValue > *(uint64_t *)pExtraValue;
+                  return *(uint64_t *)pMemoryValue > *(uint64_t *)pScanValue && *(uint64_t *)pMemoryValue < *(uint64_t*)pExtraValue;
+               return *(uint64_t *)pMemoryValue < *(uint64_t *)pScanValue && *(uint64_t *)pMemoryValue > *(uint64_t *)pExtraValue;
             case valTypeInt64:
                if (*(int64_t *)pExtraValue > *(int64_t *)pScanValue)
-                  return *(int64_t *)pScanValue < *(int64_t *)pMemoryValue < *(int64_t*)pExtraValue;
-               return *(int64_t *)pScanValue > *(int64_t *)pMemoryValue > *(int64_t *)pExtraValue;
+                  return *(int64_t *)pMemoryValue > *(int64_t *)pScanValue && *(int64_t *)pMemoryValue < *(int64_t*)pExtraValue;
+               return *(int64_t *)pMemoryValue < *(int64_t *)pScanValue && *(int64_t *)pMemoryValue > *(int64_t *)pExtraValue;
             case valTypeFloat:
                if (*(float *)pExtraValue > *(float *)pScanValue)
-                  return *(float *)pScanValue < *(float *)pMemoryValue < *(float*)pExtraValue;
-               return *(float *)pScanValue > *(float *)pMemoryValue > *(float *)pExtraValue;
+                  return *(float *)pMemoryValue > *(float *)pScanValue && *(float *)pMemoryValue < *(float*)pExtraValue;
+               return *(float *)pMemoryValue < *(float *)pScanValue && *(float *)pMemoryValue > *(float *)pExtraValue;
             case valTypeDouble:
                if (*(double *)pExtraValue > *(double *)pScanValue)
-                  return *(double *)pScanValue < *(double *)pMemoryValue < *(double*)pExtraValue;
-               return *(double *)pScanValue > *(double *)pMemoryValue > *(double *)pExtraValue;
+                  return *(double *)pMemoryValue > *(double *)pScanValue && *(double *)pMemoryValue < *(double*)pExtraValue;
+               return *(double *)pMemoryValue < *(double *)pScanValue && *(double *)pMemoryValue > *(double *)pExtraValue;
             case valTypeArrBytes:
             case valTypeString:
                return false;
@@ -1261,7 +1270,7 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
       {
          switch (valType) {
             case valTypeUInt8:
-               return *pMemoryValue != pExtraValue;
+               return *pMemoryValue != *pExtraValue;
             case valTypeInt8:
                return *(int8_t *)pMemoryValue != *(int8_t *)pExtraValue;
             case valTypeUInt16:
@@ -1289,7 +1298,7 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
       {
          switch (valType) {
             case valTypeUInt8:
-               return *pMemoryValue == pExtraValue;
+               return *pMemoryValue == *pExtraValue;
             case valTypeInt8:
                return *(int8_t *)pMemoryValue == *(int8_t *)pExtraValue;
             case valTypeUInt16:
@@ -1321,7 +1330,7 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
    return false;
 }
 int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
-   int r;
+   int r = 1;
 
    size_t valueLength = rpc_proc_scan_getSizeOfValueType(pScan->valueType);
    if (!valueLength)

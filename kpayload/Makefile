@@ -14,7 +14,7 @@ CFILES	:=	$(wildcard $(SDIR)/*.c)
 SFILES	:=	$(wildcard $(SDIR)/*.s)
 OBJS	:=	$(patsubst $(SDIR)/%.c, $(ODIR)/%.o, $(CFILES)) $(patsubst $(SDIR)/%.s, $(ODIR)/%.o, $(SFILES))
 
-LIBS	:=
+LIBS	:= 
 
 TARGET = kpayload.elf
 
@@ -23,10 +23,10 @@ $(TARGET): $(ODIR) $(OBJS)
 	strip $(TARGET)
 
 $(ODIR)/%.o: $(SDIR)/%.c
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -Qn -c -o $@ $< $(CFLAGS)
 
 $(ODIR)/%.o: $(SDIR)/%.s
-	$(AS) -c -o $@ $< $(SFLAGS)
+	$(AS) -Qn -c -o $@ $< $(SFLAGS)
 
 $(ODIR):
 	@mkdir $@
