@@ -1036,15 +1036,11 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
       {
          if (valType == valTypeFloat) {
             float diff = *(float *)pScanValue - *(float *)pMemoryValue;
-            if (diff < 0.0f)
-               diff = *(float *)pMemoryValue - *(float *)pScanValue;
-            return diff < 1.0f;
+            return diff < 1.0f && diff > -1.0f;
          }
          else if (valType == valTypeDouble) {
             float diff = *(double *)pScanValue - *(double *)pMemoryValue;
-            if (diff < 0.0)
-               diff = *(double *)pMemoryValue - *(double *)pScanValue;
-            return diff < 1.0;
+            return diff < 1.0 && diff > -1.0;
          }
          else {
             return false;
@@ -1348,7 +1344,7 @@ int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
       uint64_t leftToRead = scanLength;
       uint64_t offset = 0;
 
-      void *pReadData = alloc(RPC_MAX_DATA_LEN);
+      unsigned char *pReadData = (unsigned char *)alloc(RPC_MAX_DATA_LEN);
       unsigned char *pExtraValue = valueLength == pScan->lenData ? NULL : &pScan->data[valueLength];
       while (leftToRead) {
          uint64_t amountToRead = leftToRead;
@@ -1365,7 +1361,7 @@ int rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
             for (uint64_t i = 0; i < amountRead; i += valueLength) {
                uint64_t curAddress = pScan->beginAddress + offset + i;
                if (rpc_proc_scan_compareValues(pScan->compareType, pScan->valueType, valueLength,
-                                               pScan->data, (unsigned char *)pReadData, pExtraValue)) {
+                                               pScan->data, pReadData + i, pExtraValue)) {
                   r = rpc_send_data(fd, &curAddress, sizeof(uint64_t));
                   if (!r) {
                      r = 1;
