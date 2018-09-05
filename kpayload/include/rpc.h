@@ -204,16 +204,14 @@ enum scan_CompareType {
 } __attribute__((__packed__));
 struct rpc_proc_scan {
    /* +0x00 */ uint32_t pid;
-   /* +0x04 */ uint64_t beginAddress;
-   /* +0x0C */ uint64_t endAddress;
-   /* +0x14 */ enum scan_ValueType valueType;
-   /* +0x15 */ enum scan_CompareType compareType;
-   /* +0x16 */ uint32_t lenData;
+   /* +0x04 */ enum scan_ValueType valueType;
+   /* +0x05 */ enum scan_CompareType compareType;
+   /* +0x06 */ uint32_t lenData;
    // not actually part of the packet
-   /* +0x1A */ unsigned char *data;
+   /* +0x0A */ unsigned char *data;
 } __attribute__((packed));
 
-#define RPC_PROC_SCAN_SIZE 26
+#define RPC_PROC_SCAN_SIZE 16
 
 extern struct proc *krpcproc;
 

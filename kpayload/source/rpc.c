@@ -1015,7 +1015,6 @@ size_t rpc_proc_scan_getSizeOfValueType(enum scan_ValueType valType) {
          return 8;
       case valTypeArrBytes:
       case valTypeString:
-      default:
          return NULL;
    }
 }
@@ -1325,11 +1324,35 @@ bool rpc_proc_scan_compareValues(enum scan_CompareType cmpType, enum scan_ValueT
    }
    return false;
 }
+
+typedef struct ResultNode {
+   struct ResultNode* next;
+   uint64_t address;
+} ResultNode;
+
+void resultlist_add(ResultNode** head, uint64_t address) {
+   ResultNode* node = (ResultNode *)alloc(sizeof(ResultNode));
+	node->address = address;
+	if (!(*head)) {
+		node->next = NULL;
+		*head = node;
+	} else {
+		node->next = *head;
+		*head = node;
+	}
+}
+void resultlist_deallocall(ResultNode* head) {
+   ResultNode* nextNode = head->next;
+   dealloc(head);
+   if (nextNode)
+      resultlist_deallocall(nextNode);
+}
+
 void rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
    size_t valueLength = rpc_proc_scan_getSizeOfValueType(pScan->valueType);
    if (!valueLength)
       valueLength = pScan->lenData;
-   pScan->data = (uint8_t *)alloc(pScan->lenData);
+   pScan->data = (unsigned char *)alloc(pScan->lenData);
    if (!pScan->data)
       return;
    if (!rpc_recv_data(fd, pScan->data, pScan->lenData, 1)) {
@@ -1339,36 +1362,42 @@ void rpc_handle_scan(int fd, struct rpc_proc_scan *pScan) {
 
    struct proc *p = proc_find_by_pid(pScan->pid);
    if (p) {
+      struct proc_vm_map_entry *entries = NULL;
+      size_t num_entries = 0;
+      if (proc_get_vm_map(p, &entries, &num_entries)
+         || num_entries == 0) {
+         rpc_send_status(fd, RPC_INFO_ERROR);
+         dealloc(pScan->data);
+         return;
+      }
       rpc_send_status(fd, RPC_SUCCESS);
 
-      uint64_t scanLength = pScan->endAddress - pScan->beginAddress;
-      uint64_t leftToRead = scanLength;
-      uint64_t offset = 0;
-
-      size_t scanBufSize = 100 * 1024 * 1024; // 100 mb
-      // cast to byte so we can byte pad easily
-      unsigned char *scanBuffer = (unsigned char *)alloc(scanBufSize);
+      ResultNode* list = NULL;
       unsigned char *pExtraValue = valueLength == pScan->lenData ? NULL : &pScan->data[valueLength];
-      while (leftToRead) {
-         size_t amountRead;
-         uint64_t amountToRead = leftToRead > scanBufSize ? scanBufSize : leftToRead;
-         if (!proc_read_mem(p, (void *)(pScan->beginAddress + offset), (size_t)amountToRead, scanBuffer, &amountRead)) {
+      for (size_t i = 0; i < num_entries; i++) {
+         size_t sectionlen = entries[i].end - entries[i].start;
+         size_t amountRead = 0;
+         void *scanBuffer = alloc(sectionlen);
+
+         if (!proc_read_mem(p, (void *)(entries[i].start), sectionlen, scanBuffer, &amountRead)) {
             for (uint64_t i = 0; i < amountRead; i += valueLength) {
-               uint64_t curAddress = pScan->beginAddress + offset + i;
+               uint64_t curAddress = entries[i].start + i;
                if (rpc_proc_scan_compareValues(pScan->compareType, pScan->valueType, valueLength, pScan->data, scanBuffer + i, pExtraValue)) {
-                  if (!rpc_send_data(fd, &curAddress, sizeof(uint64_t))) {
-                     // assignment to also break the while-loop
-                     leftToRead = amountToRead;
-                     break;
-                  }
+                  resultlist_add(&list, curAddress);
                }
             }
          }
-
-         leftToRead -= amountToRead;
-         offset += amountToRead;
+         dealloc(scanBuffer);
       }
-      dealloc(scanBuffer);
+
+      ResultNode* _list = list;
+      while (_list) {
+         rpc_send_data(fd, &list->address, sizeof(uint64_t));
+         _list = list->next;
+      }
+      uint64_t endSig = 0xFFFFFFFFFFFFFFFF;
+      rpc_send_data(fd, &endSig, sizeof(uint64_t));
+      resultlist_deallocall(list);
    }
    else {
       rpc_send_status(fd, RPC_NO_PROC);
